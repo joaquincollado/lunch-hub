@@ -1,0 +1,5 @@
+[
+  { "id": "provider-1", "name": "Tu viandita", "url": "https://tuviandita.enviandate.com/", "color": "#FF6B35" },
+  { "id": "provider-2", "name": "Esto si", "url": "https://estosi.enviandate.com/", "color": "#2EC4B6" },
+  { "id": "provider-3", "name": "The Healthy Club", "url": "/proxy/healthyclub", "color": "#E71D36" }
+]
