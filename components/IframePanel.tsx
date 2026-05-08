@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 interface Provider {
   id: string;
   name: string;
   url: string;
+  directUrl: string;
   color: string;
 }
 
@@ -15,9 +16,14 @@ interface IframePanelProps {
 }
 
 export default function IframePanel({ providers, activeId }: IframePanelProps) {
+  const [mounted, setMounted] = useState(false);
   const [loadedIds, setLoadedIds] = useState<Set<string>>(new Set());
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set());
   const iframeRefs = useRef<Record<string, HTMLIFrameElement | null>>({});
+  const activeProvider = providers.find((p) => p.id === activeId);
+
+  // Only render iframes on the client to avoid hydration mismatches
+  useEffect(() => setMounted(true), []);
 
   const markError = useCallback((id: string) => {
     setErrorIds((prev) => new Set(prev).add(id));
@@ -25,37 +31,8 @@ export default function IframePanel({ providers, activeId }: IframePanelProps) {
   }, []);
 
   const handleLoad = useCallback((id: string) => {
-    const iframe = iframeRefs.current[id];
-    if (iframe) {
-      try {
-        // If we can access contentDocument and it has no body content,
-        // or if accessing it throws (cross-origin after X-Frame-Options block),
-        // the site likely blocked embedding.
-        const doc = iframe.contentDocument;
-        if (doc && doc.body && doc.body.innerHTML === "") {
-          markError(id);
-          return;
-        }
-      } catch {
-        // Cross-origin access is expected for sites that DO load.
-        // But for X-Frame-Options: SAMEORIGIN blocked iframes,
-        // some browsers show an error page that is still cross-origin.
-        // We use a heuristic: check if iframe contentWindow.length is 0
-        // (no sub-frames) — blocked pages typically have length 0.
-        try {
-          if (iframe.contentWindow && iframe.contentWindow.length === 0) {
-            // Could be a valid page with no sub-frames, so we can't be sure.
-            // We'll let it pass — the iframe may just show a blank/error from the browser.
-          }
-        } catch {
-          // Fully blocked — mark as error
-          markError(id);
-          return;
-        }
-      }
-    }
     setLoadedIds((prev) => new Set(prev).add(id));
-  }, [markError]);
+  }, []);
 
   const handleError = useCallback((id: string) => {
     markError(id);
@@ -63,6 +40,25 @@ export default function IframePanel({ providers, activeId }: IframePanelProps) {
 
   return (
     <div className="relative flex-1 bg-white">
+      {/* Floating "open externally" button. Login/checkout flows use third-party
+          widgets (reCAPTCHA, payment) that won't run on localhost, so the user
+          finishes the order on the real site. */}
+      {activeProvider && (
+        <a
+          href={activeProvider.directUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Login & checkout aren't available inside the embed — opens the real ${activeProvider.name} site`}
+          className="absolute top-4 right-4 z-30 flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium shadow-lg hover:scale-[1.02] transition-transform"
+          style={{ backgroundColor: activeProvider.color }}
+        >
+          Order on {activeProvider.name}
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </a>
+      )}
+
       {providers.map((provider) => {
         const isActive = provider.id === activeId;
         const isLoaded = loadedIds.has(provider.id);
@@ -116,17 +112,18 @@ export default function IframePanel({ providers, activeId }: IframePanelProps) {
                   </a>
                 </div>
               </div>
-            ) : (
+            ) : mounted ? (
               <iframe
                 ref={(el) => { iframeRefs.current[provider.id] = el; }}
                 src={provider.url}
                 title={provider.name}
                 className="w-full h-full border-0"
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+                referrerPolicy="no-referrer-when-downgrade"
+                allow="clipboard-write"
                 onLoad={() => handleLoad(provider.id)}
                 onError={() => handleError(provider.id)}
               />
-            )}
+            ) : null}
           </div>
         );
       })}
